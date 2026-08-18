@@ -26,7 +26,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y xz-utils libtinfo6
+          sudo apt-get install -y xz-utils libtinfo5
 
           curl -fL \
             https://github.com/sbingner/llvm-project/releases/download/v10.0.0-1/linux-ios-arm64e-clang-toolchain.tar.lzma \
@@ -44,14 +44,9 @@ jobs:
           tar -xJf /tmp/iPhoneOS10.3.sdk.tar.xz -C /tmp/ios-sdk
           sudo mv /tmp/ios-sdk/iPhoneOS10.3.sdk /opt/iPhoneOS10.3.sdk
 
-          # Some old Linux iOS toolchains expect libtinfo.so.5. On newer Ubuntu
-          # only libtinfo.so.6 is present; the clang binary itself is compatible.
-          if ! ldconfig -p | grep -q 'libtinfo.so.5'; then
-            TINFO6=$(ldconfig -p | awk '/libtinfo\.so\.6 .*x86-64/ {print $NF; exit}')
-            if [ -n "${TINFO6:-}" ]; then
-              sudo ln -sf "$TINFO6" /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-            fi
-          fi
+          # Bingner's clang-10 is linked against the legacy terminfo ABI.
+          # Install the real libtinfo5 package; a symlink to libtinfo6 is NOT ABI-compatible.
+          ldconfig -p | grep 'libtinfo.so.5'
 
           sudo ln -sf /opt/ios-toolchain/bin/ld64 /opt/ios-toolchain/bin/ld
           export PATH=/opt/ios-toolchain/bin:$PATH
