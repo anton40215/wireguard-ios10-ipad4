@@ -95,9 +95,21 @@ jobs:
 
           # Go 1.14's own misc/ios/clangwrap.sh uses clang + armv7 + iOS SDK.
           # darwin/arm requires an external Apple linker, so use the bundled ld64.
-          go build -trimpath -x \
+          # Keep the log concise. On failure print the actual compiler/linker diagnostics
+          # instead of hundreds of -x command lines.
+          set +e
+          go build -p 1 -trimpath \
             -ldflags='-linkmode=external -s -w' \
-            -o "$GITHUB_WORKSPACE/out/warp10" .
+            -o "$GITHUB_WORKSPACE/out/warp10" . 2>&1 | tee "$GITHUB_WORKSPACE/out/build.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo '===== BUILD FAILED: relevant diagnostics ====='
+            grep -Ein 'error:|undefined|failed|cannot|unsupported|unknown|ld:|clang:|link:' "$GITHUB_WORKSPACE/out/build.log" | tail -n 120 || true
+            echo '===== LAST 120 LINES ====='
+            tail -n 120 "$GITHUB_WORKSPACE/out/build.log"
+            exit "$rc"
+          fi
 
           file "$GITHUB_WORKSPACE/out/warp10" | tee "$GITHUB_WORKSPACE/out/file.txt"
           grep -Eqi 'Mach-O.*arm|Mach-O.*ARM' "$GITHUB_WORKSPACE/out/file.txt"
