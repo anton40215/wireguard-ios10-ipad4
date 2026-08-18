@@ -49,6 +49,29 @@ jobs:
           ldconfig -p | grep 'libtinfo.so.5'
 
           sudo ln -sf /opt/ios-toolchain/bin/ld64 /opt/ios-toolchain/bin/ld
+
+          # ld64 from this legacy toolchain dynamically loads libLTO.so.10svn.
+          # Locate the bundled LLVM/LTO libraries and expose their directories to ld64.
+          LTO_EXACT=$(find /opt/ios-toolchain -\( -type f -o -type l -\) -name 'libLTO.so.10svn' -print -quit || true)
+          if [ -z "$LTO_EXACT" ]; then
+            LTO_ALT=$(find /opt/ios-toolchain -\( -type f -o -type l -\) -name 'libLTO.so*' -print -quit || true)
+            if [ -z "$LTO_ALT" ]; then
+              echo 'ERROR: toolchain contains no libLTO.so*' >&2
+              find /opt/ios-toolchain -maxdepth 4 -type f | sort | grep -Ei 'LTO|LLVM|tapi' | head -n 200 || true
+              exit 1
+            fi
+            LTO_DIR=$(dirname "$LTO_ALT")
+            sudo ln -sf "$(basename "$LTO_ALT")" "$LTO_DIR/libLTO.so.10svn"
+          fi
+
+          TOOLCHAIN_LIB_DIRS=$(find /opt/ios-toolchain -\( -type f -o -type l -\) \
+            \( -name 'libLTO.so*' -o -name 'libLLVM*.so*' -o -name 'libtapi.so*' -o -name 'libclang*.so*' \) \
+            -printf '%h\n' | sort -u | paste -sd: -)
+          export LD_LIBRARY_PATH="$TOOLCHAIN_LIB_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          echo "Toolchain runtime library path: $LD_LIBRARY_PATH"
+          find /opt/ios-toolchain -\( -type f -o -type l -\) -name 'libLTO.so*' -ls
+
           export PATH=/opt/ios-toolchain/bin:$PATH
           /opt/ios-toolchain/bin/clang-10 --version
           /opt/ios-toolchain/bin/ld64 -v || true
@@ -65,10 +88,13 @@ jobs:
           EOF
           chmod +x /tmp/ios-clang
 
-          # Sanity-check that this Linux clang really emits an iOS ARMv7 Mach-O object.
+          # Sanity-check both compilation AND the Apple linker before building Go.
           printf 'int warp10_probe(void) { return 10; }\n' > /tmp/warp10-probe.c
           /tmp/ios-clang -c /tmp/warp10-probe.c -o /tmp/warp10-probe.o
           file /tmp/warp10-probe.o
+          printf 'int main(void) { return 0; }\n' > /tmp/warp10-link-probe.c
+          /tmp/ios-clang /tmp/warp10-link-probe.c -o /tmp/warp10-link-probe
+          file /tmp/warp10-link-probe
 
       - name: Fetch WireGuard and inject WARP10 main
         shell: bash
