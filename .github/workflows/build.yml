@@ -38,7 +38,8 @@ jobs:
           go mod download
           mkdir -p "$GITHUB_WORKSPACE/out"
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm GOARM=7 \
-            go build -trimpath -ldflags='-s -w' \
+            go build -buildmode=exe -trimpath \
+            -ldflags='-linkmode=internal -s -w' \
             -o "$GITHUB_WORKSPACE/out/warp10" .
           file "$GITHUB_WORKSPACE/out/warp10" | tee "$GITHUB_WORKSPACE/out/file.txt"
           grep -Eqi 'Mach-O.*arm|Mach-O.*ARM' "$GITHUB_WORKSPACE/out/file.txt"
