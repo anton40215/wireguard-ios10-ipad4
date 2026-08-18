@@ -57,13 +57,18 @@ jobs:
           cat > /tmp/ios-clang <<'EOF'
           #!/bin/sh
           exec /opt/ios-toolchain/bin/clang-10 \
-            -arch armv7 \
+            --target=armv7-apple-ios10.0 \
             -isysroot /opt/iPhoneOS10.3.sdk \
-            -mios-version-min=10.0 \
             -B/opt/ios-toolchain/bin \
+            -Qunused-arguments \
             "$@"
           EOF
           chmod +x /tmp/ios-clang
+
+          # Sanity-check that this Linux clang really emits an iOS ARMv7 Mach-O object.
+          printf 'int warp10_probe(void) { return 10; }\n' > /tmp/warp10-probe.c
+          /tmp/ios-clang -c /tmp/warp10-probe.c -o /tmp/warp10-probe.o
+          file /tmp/warp10-probe.o
 
       - name: Fetch WireGuard and inject WARP10 main
         shell: bash
@@ -86,9 +91,11 @@ jobs:
           export CGO_ENABLED=1
           export CC=/tmp/ios-clang
           export CXX=/tmp/ios-clang
-          export CGO_CFLAGS='-arch armv7 -isysroot /opt/iPhoneOS10.3.sdk -mios-version-min=10.0'
-          export CGO_CXXFLAGS="$CGO_CFLAGS"
-          export CGO_LDFLAGS='-arch armv7 -isysroot /opt/iPhoneOS10.3.sdk -mios-version-min=10.0'
+          # The wrapper already sets the Apple/iOS target and SDK.
+          # Do not repeat -arch/-mios flags in CGO_*: Linux clang treats them as unused.
+          export CGO_CFLAGS='-O2 -g'
+          export CGO_CXXFLAGS='-O2 -g'
+          export CGO_LDFLAGS=''
           go env
           go mod download
           mkdir -p "$GITHUB_WORKSPACE/out"
